@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <title>Speech Recognition Demo</title>
@@ -16,13 +16,15 @@
     </div>
     <div class="container">
         <main>
-            <visualizer></visualizer>
+            <div id="visualizer" aria-label="Audio visualizer" role="presentation"></div>
             <section>
-                <button type="submit" id="startBtn">START</button>
-                <button type="submit" id="stopBtn" disabled>STOP</button>
-                <button type="submit" id="downloadBtn" class="button">DOWNLOAD</button>
+                <button type="button" id="startBtn">START</button>
+                <button type="button" id="stopBtn" disabled>STOP</button>
+                <button type="button" id="downloadBtn" class="button" disabled>DOWNLOAD</button>
             </section>
-            <textarea id="transcript" placeholder="Your transcribed text will appear here..."></textarea>
+            <label for="transcript" class="sr-only">Transcript</label>
+            <textarea id="transcript" aria-live="polite"
+                placeholder="Your transcribed text will appear here..."></textarea>
         </main>
     </div>
     <script src="./script.js"></script>

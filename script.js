@@ -4,6 +4,7 @@ class AudioVisualizer {
         this.processFrame = processFrame;
         this.connectStream = this.connectStream.bind(this);
         this.stream = null;
+        this.gainValue = 2.0; // Microphone gain boost (1.0 = normal, >1.0 = louder)
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(this.connectStream)
             .catch(error => console.error('Error accessing audio stream:', error));
@@ -12,8 +13,12 @@ class AudioVisualizer {
     connectStream(stream) {
         this.stream = stream;
         this.analyser = this.audioContext.createAnalyser();
+        // Add a GainNode to boost the input volume
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = this.gainValue;
         const source = this.audioContext.createMediaStreamSource(stream);
-        source.connect(this.analyser);
+        source.connect(this.gainNode);
+        this.gainNode.connect(this.analyser);
         this.analyser.smoothingTimeConstant = 0.5;
         this.analyser.fftSize = 32;
 
@@ -40,16 +45,18 @@ class AudioVisualizer {
     }
 }
 
-const visualMainElement = document.querySelector('visualizer');
+// Use #visualizer instead of custom tag
+const visualMainElement = document.getElementById('visualizer');
 const visualValueCount = 16;
 let visualElements;
 
 const createDOMElements = () => {
+    visualMainElement.innerHTML = '';
     for (let i = 0; i < visualValueCount; ++i) {
         const elm = document.createElement('div');
         visualMainElement.appendChild(elm);
     }
-    visualElements = document.querySelectorAll('visualizer div');
+    visualElements = visualMainElement.querySelectorAll('div');
 };
 
 createDOMElements();
@@ -68,12 +75,18 @@ document.addEventListener("DOMContentLoaded", () => {
     let finalTranscript = '';
     let audioVisualizer = null;
 
+    // Accessibility: Announce errors
+    const announceError = (msg) => {
+        alert(msg);
+    };
+
+    // Check for SpeechRecognition support
     if ('webkitSpeechRecognition' in window) {
         recognition = new webkitSpeechRecognition();
     } else if ('SpeechRecognition' in window) {
         recognition = new SpeechRecognition();
     } else {
-        alert("Sorry, your browser does not support speech recognition.");
+        announceError("Sorry, your browser does not support speech recognition.");
         return;
     }
 
@@ -98,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
         startBtn.disabled = true;
         stopBtn.disabled = false;
         downloadBtn.disabled = true;
+        transcriptArea.focus();
     };
 
     recognition.onend = () => {
@@ -107,11 +121,12 @@ document.addEventListener("DOMContentLoaded", () => {
         downloadBtn.disabled = finalTranscript.length === 0;
         if (audioVisualizer) {
             audioVisualizer.stop();
+            audioVisualizer = null;
         }
     };
 
     recognition.onerror = (event) => {
-        console.error('Speech Recognition Error:', event.error);
+        announceError('Speech Recognition Error: ' + event.error);
         if (event.error === 'no-speech' || event.error === 'audio-capture' || event.error === 'network') {
             recognition.stop();
         }
@@ -119,8 +134,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
     startBtn.addEventListener("click", () => {
         if (!isRecording) {
+            // Reset transcript and visualizer
+            finalTranscript = '';
+            transcriptArea.value = '';
+            createDOMElements();
+            transcriptArea.focus();
+            // Check for AudioContext support
+            if (typeof window.AudioContext !== 'function' && typeof window.webkitAudioContext !== 'function') {
+                announceError('AudioContext is not supported in this browser.');
+                return;
+            }
             recognition.start();
-            const audioContext = new AudioContext();
+            // Prevent multiple visualizers
+            if (audioVisualizer) {
+                audioVisualizer.stop();
+                audioVisualizer = null;
+            }
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const audioContext = new AudioCtx();
             const dataMap = { 0: 15, 1: 10, 2: 8, 3: 9, 4: 6, 5: 5, 6: 2, 7: 1, 8: 0, 9: 4, 10: 3, 11: 7, 12: 11, 13: 12, 14: 13, 15: 14 };
             const processFrame = (data) => {
                 const values = Object.values(data);
@@ -141,11 +172,16 @@ document.addEventListener("DOMContentLoaded", () => {
             recognition.stop();
             if (audioVisualizer) {
                 audioVisualizer.stop();
+                audioVisualizer = null;
             }
         }
     });
 
     downloadBtn.addEventListener("click", () => {
+        if (!finalTranscript.trim()) {
+            announceError('Transcript is empty. Nothing to download.');
+            return;
+        }
         const blob = new Blob([finalTranscript], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -156,5 +192,15 @@ document.addEventListener("DOMContentLoaded", () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    });
+
+    // Clean up event listeners on unload
+    window.addEventListener('beforeunload', () => {
+        if (audioVisualizer) {
+            audioVisualizer.stop();
+        }
+        if (recognition && isRecording) {
+            recognition.stop();
+        }
     });
 });
